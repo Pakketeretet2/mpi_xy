@@ -131,8 +131,8 @@ xy_model_grid all_reduce_grid(const xy_model_grid &g,
 	int my_x_tile = my_rank % n_tiles_x;
 	int my_y_tile = my_rank / n_tiles_x;
 
-	long Nx_all = n_tiles_x * g.Nx;
-	long Ny_all = n_tiles_y * g.Ny;
+	long Nx_all = n_tiles_x * (g.Nx-2);
+	long Ny_all = n_tiles_y * (g.Ny-2);
 	
 	long n_all = Nx_all * Ny_all;
 
@@ -141,8 +141,8 @@ xy_model_grid all_reduce_grid(const xy_model_grid &g,
 	std::vector<double> all_thetas(n_all, 0);
 	std::vector<double> gather_thetas(n_all, 0);
 	
-	long x_offset = my_x_tile * g.Nx;
-	long y_offset = my_y_tile * g.Ny;
+	long x_offset = my_x_tile * (g.Nx-2);
+	long y_offset = my_y_tile * (g.Ny-2);
 
 	log << "Writing grid of proc " << my_rank << " to tile ("
 	    << my_x_tile << ", " << my_y_tile << "), global offsets ("
@@ -173,13 +173,13 @@ xy_model_grid all_reduce_grid(const xy_model_grid &g,
 	// [ 12 13 14 15 ]
 	//
 
-	for (long iy = 0; iy < g.Ny; ++iy) {
-		for (long ix = 0; ix < g.Nx; ++ix) {
+	for (long iy = 1; iy < g.Ny-1; ++iy) {
+		for (long ix = 1; ix < g.Nx-1; ++ix) {
 			long i = ix + g.Nx*iy; // index in my local theta vector
 
 			// Construct corresponding index in global theta vector:
-			int idx_x = x_offset + ix;
-			int idx_y = y_offset + iy;
+			int idx_x = x_offset + ix-1;
+			int idx_y = y_offset + iy-1;
 			// (idx_x, idy_x) is double index in the global vector.
 			// The stride in y is Nx_all
 			int idx = idx_x + idx_y * Nx_all;
