@@ -183,22 +183,6 @@ xy_model_grid all_reduce_grid(const xy_model_grid &g,
 			// (idx_x, idy_x) is double index in the global vector.
 			// The stride in y is Nx_all
 			int idx = idx_x + idx_y * Nx_all;
-			if (idx < 0) {
-				std::cerr << "idx cannot be negative!\n";
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
-			if (idx >= n_all) {
-				std::cerr << "idx out of bounds!\n";
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
-			if (i < 0) {
-				std::cerr << "i cannot be negative!\n";
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
-			if (i >= g.Nx*g.Ny) {
-				std::cerr << "i out of bounds!\n";
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
 			
 			all_thetas[idx] = g.s[i];
 
@@ -211,7 +195,7 @@ xy_model_grid all_reduce_grid(const xy_model_grid &g,
 	
 	// Global theta index:
 	for (long i = 0; i < n_all; ++i) {
-		// all_grid.s[i] = gather_thetas[i];
+		all_grid.s[i] = gather_thetas[i];
 	}
 
 	return all_grid;
@@ -256,7 +240,6 @@ void print_total_grid(const xy_model_grid &g, int my_rank,
 		for (long i = 0; i < n_all; ++i) {
 			// Just convert i back to an ix and an iy:
 			// i = idx_x + idx_y * g.Ny*n_tiles_y;
-			// so
 			if (all_grid.s[i] > 0) {
 				total_theta += 1.0;
 				total_plus += 1.0;
@@ -298,6 +281,20 @@ void warm_up(xoshiro256 &rng)
 	}
 }
 
+
+
+template <typename T>
+std::string to_string_w_width(const T &t, std::size_t width, char fill)
+{
+	std::string res = std::to_string(t);
+	std::size_t added = 0;
+	std::string front;
+	while (added + res.size() < width) {
+		front += fill;
+		++added;
+	}
+	return front + res;
+}
 
 
 
@@ -401,8 +398,21 @@ int mpi_main::run(int argc, char **argv)
 			}
 		}
 	}
-	
+
 	spins.set_grid(grid);
+	std::string init_grid_name_png = "init_grid_" + std::to_string(my_rank);
+	init_grid_name_png += ".png";
+	xy_grid_to_png(spins.grid(), init_grid_name_png.c_str());
+
+	std::string init_all_grid_name_png = "init_grid_all.png";
+	xy_model_grid total_grid_init = all_reduce_grid(spins.grid(), my_rank,
+	                                                n_tiles_x, n_tiles_y,
+	                                                log);
+	if (my_rank == 0) {
+		xy_grid_to_png(total_grid_init, init_all_grid_name_png.c_str());
+	}
+	
+	
 	spins.set_temp(2.0);
 	if (my_rank == 0) {
 		std::cerr << "rank layout:\n";
@@ -415,7 +425,6 @@ int mpi_main::run(int argc, char **argv)
 		}
 
 	}
-
 	
 	// Exchange all boundaries first:
 	for (int i = 0; i < 4; ++i) {
@@ -433,7 +442,7 @@ int mpi_main::run(int argc, char **argv)
 	double accepts = 0.0;
 	double total = 0.0;
 	long long steps_taken = 0;
-	long tot_sweeps = 5000;
+	long tot_sweeps = 500;
 	long tot_moves = 10*grid.Nx*grid.Ny;
 	long n_steps_to_exchange = grid.Nx*grid.Ny;
 
@@ -447,7 +456,7 @@ int mpi_main::run(int argc, char **argv)
 	
 	int png_grids_written = 0;
 	std::string out_name = "grids_out/total_grid_";
-	out_name += std::to_string(png_grids_written);
+	out_name += to_string_w_width(png_grids_written, 6, '0');
 	out_name += ".png";
 	xy_model_grid total_grid = all_reduce_grid(spins.grid(), my_rank,
 	                                           n_tiles_x, n_tiles_y,
@@ -457,17 +466,10 @@ int mpi_main::run(int argc, char **argv)
 	}
 	++png_grids_written;
 
-	out_name = "grids_out/total_grid_";
-	out_name += std::to_string(png_grids_written);
-	out_name += ".png";
-	total_grid = all_reduce_grid(spins.grid(), my_rank,
-	                             n_tiles_x, n_tiles_y,
-	                             log);
-	if (my_rank == 0) {
-		xy_grid_to_png(total_grid, out_name.c_str());
-	}
-	++png_grids_written;
+	int sweeps_per_write = 50;
 
+	long total_steps = tot_sweeps * tot_moves;
+	long n_out = 10000000;
 	for (long n_sweeps = 0; n_sweeps < tot_sweeps; ++n_sweeps) {
 		for (long n_moves = 0; n_moves < tot_moves; ++n_moves) {
 			accepts += spins.metropolis_move();
@@ -477,6 +479,13 @@ int mpi_main::run(int argc, char **argv)
 			if (n_moves % n_steps_to_exchange == 0) {
 				spins.exchange_boundaries();
 			}
+
+			if (my_rank == 0 && (steps_taken % n_out == 0) ) {
+				double prog = steps_taken;
+				prog /= total_steps;
+				std::cerr << steps_taken << " / " << total_steps
+				          << " (" << prog*100 << " %)\n";
+			}
 		}
 		total_U = spins.total_spin_energy();
 		
@@ -484,21 +493,24 @@ int mpi_main::run(int argc, char **argv)
 			std::cout << steps_taken << " " << accepts/total << " "
 			          << total_U*c << " " << spins.average_up_spin()
 			          << " " << spins.average_spin() << "\n";
+			
 		}
-		
-		total_grid = all_reduce_grid(spins.grid(), my_rank,
-		                             n_tiles_x, n_tiles_y,
-		                             log);
-		
 
-		out_name = "grids_out/total_grid_";
-		out_name += std::to_string(png_grids_written);
-		out_name += ".png";
+
+		if (n_sweeps % sweeps_per_write == 0) {
+			total_grid = all_reduce_grid(spins.grid(), my_rank,
+			                             n_tiles_x, n_tiles_y,
+			                             log);
 		
-		if (my_rank == 0) {
-			xy_grid_to_png(total_grid, out_name.c_str());
+			out_name = "grids_out/total_grid_";
+			out_name += to_string_w_width(png_grids_written, 6, '0');
+			out_name += ".png";
+			
+			if (my_rank == 0) {
+				xy_grid_to_png(total_grid, out_name.c_str());
+			}
+			++png_grids_written;
 		}
-		++png_grids_written;
 	}
 
 	
