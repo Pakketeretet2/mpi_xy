@@ -2,33 +2,61 @@
 #define XY_MODEL_HPP
 
 
+#include "xy_grid.hpp"
 #include "rng.hpp"
-
-
-struct vec_2d {
-	double x, y;
-};
 
 
 constexpr const double pi = 3.141592653589793238462643383279502884L;
 	
 
-struct xy_model_grid
-{
+class xy {
+public:
+	xy(int Nx, int Ny, int Nz, xoshiro256 &random_generator,
+	   std::ostream &log);
 
-	enum DIRECTIONS { TOP = 0,
-	                  BOTTOM,
-	                  RIGHT,
-	                  LEFT,
-	                  FRONT,
-	                  BACK
-	};
+	void rand_init_grid();
+	void rand_init_grid_ising();
+	void set_grid(const xy_model_grid &new_grid);
+
+	double average_spin() const;
+	double average_up_spin() const;
+
+	void print_xy_grid_ising(std::ostream &out);
+
+	int metropolis_move();
+
+	double spin_energy(int ix, int iy, int iz = 0) const;
+	double total_spin_energy() const;
+
+	void set_temp(double T);
+	void temp() const;
+
 	
-	xy_model_grid(int Nx, int Ny, int Nz);
-	~xy_model_grid();
+	// Some MPI-related functions:
+	void exchange_boundaries();
+	void set_my_neighbors(int neighs[6]);
+
+	const xy_model_grid &grid() const
+	{ return g; }
+
+	const char *boundary2name[6] = { "TOP", "BOTTOM", "LEFT", "RIGHT",
+	                                 "FRONT", "BACK" };
 	
-	int Nx, Ny, Nz;  // Dimensions
-	
+private:
+	xy_model_grid g;
+	xoshiro256 rng;
+
+	// Physics-related:
+	double T, beta;
+
+	// Grid-related:
+	// These regulate which points are the grid you can change.
+	// In MPI runs, 0 and N-1 are usually off-limits because they
+	// belong to your neighboring procs. Also, 1 and N-2 are off-
+	// limits unless you can guarantee that its neighbors on the other
+	// proc are not changed. See also boundary_cycle.
+	int xlo, xhi, ylo, yhi, zlo, zhi;
+
 	
 	// The boundary_cycle indicates which domain boundary is currently
 	// static. The communication works as follows: At the start of each
@@ -46,13 +74,13 @@ struct xy_model_grid
 	// because their direct neighbors are being changed by another process.
 	// 
 	// +--------+
-	// | 000000 |
-	// | 000000 |
-	// | 000000 |
-	// | 000000 |
-	// | 000000 |
-	// | 000000 |
-	// | 000000 |
+	// |        |
+	// |  0000  |
+	// |  0000  |
+	// |  0000  |
+	// |  0000  |
+	// |  0000  |
+	// |        |
 	// |        |
 	// +--------+
 	//
@@ -60,39 +88,25 @@ struct xy_model_grid
 	//
 	// +--------+
 	// |        |
-	// | 0000000|
-	// | 0000000|
-	// | 0000000|
-	// | 0000000|
-	// | 0000000|
-	// | 0000000|
+	// |        |
+	// |  00000 |
+	// |  00000 |
+	// |  00000 |
+	// |  00000 |
+	// |        |
 	// |        |
 	// +--------+	
 	//
 	int boundary_cycle;
-	double *s;          // spins, encoded as a simple angle.
+	
 
+	// MPI-related:
+	int my_rank;
+	int comm_size;
+	int my_neighbors[6];
+	std::ostream &log;
 };
 
-
-
-
-
-xy_model_grid rand_init_grid(int Nx, int Ny, int Nz, xoshiro256 &rng);
-
-
-
-xy_model_grid rand_init_grid_ising(int Nx, int Ny, int Nz, xoshiro256 &rng);
-
-
-
-void ascii_pain_ising_grid(const xy_model_grid &g);
-
-
-double average_spin(const xy_model_grid &g);
-double average_plus_spin(const xy_model_grid &g);
-
-void print_xy_grid_ising(const xy_model_grid &g, std::ostream &out);
 
 
 

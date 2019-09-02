@@ -1,5 +1,5 @@
-CC = clang++
-FLAGS = -O3 -std=c++11 -pedantic -g \
+CC = mpic++
+FLAGS = -O3 -std=c++11 -pedantic -g -DUSE_MPI=1 \
         -Werror=return-type -Werror=uninitialized -Wall
 
 LYRA_DIR = /home/stefan/projects/Lyra/include/
@@ -7,7 +7,7 @@ XOSHIRO_DIR = /home/stefan/projects/random/
 MPI_DIR = /usr/lib/openmpi/
 MPI_INC = /usr/include/openmpi/
 
-LNK = -L./ -L$(MPI_DIR) -lmpi
+LNK = -L./ -L$(MPI_DIR) -lmpi -lpng
 INC = -I./ -I$(MPI_INC) -I$(XOSHIRO_DIR) -I$(LYRA_DIR)
 
 COMP = $(CC) $(FLAGS) $(INC)
