@@ -3,7 +3,6 @@ FLAGS = -O3 -std=c++11 -pedantic -g -DUSE_MPI=1 \
         -Werror=return-type -Werror=uninitialized -Wall
 
 LYRA_DIR = /home/stefan/projects/Lyra/include/
-XOSHIRO_DIR = /home/stefan/projects/random/
 MPI_DIR = /usr/lib/openmpi/
 MPI_INC = /usr/include/openmpi/
 
