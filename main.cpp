@@ -4,7 +4,7 @@
 #include <iostream>
 #include <memory>
 
-
+#include "my_timer.hpp"
 #include "rng.hpp"
 #include "xy_model.hpp"
 #include "output_png.hpp"
@@ -229,7 +229,6 @@ void print_total_grid(const xy_model_grid &g, int my_rank,
 	
 	long Nx_all = n_tiles_x * g.Nx;
 	long Ny_all = n_tiles_y * g.Ny;
-	
 	long n_all = Nx_all * Ny_all;
 
 	if (my_rank == 0) {
@@ -303,9 +302,9 @@ int mpi_main::run(int argc, char **argv)
 	cmd_opts opts;
 	bool user_help = false;
 
-	// Sets the tiling of space:
 	
-	
+	long tot_sweeps = 10000;
+	double T = 2.0;
 	// Parse command line args:
 	auto cli = lyra::opt(opts.seed, "seed")["-s"]["--seed"]
 		("Random seed to use")
@@ -321,6 +320,10 @@ int mpi_main::run(int argc, char **argv)
 		("Number of processes in y direction.")
 		| lyra::opt(opts.n_tiles_z, "n_tiles_z")["-tz"]["--ntiles-z"]
 		("Number of processes in z direction.")
+		| lyra::opt(T, "T")["-T"]["--temperature"]
+		("The temperature of the simulation.")
+		| lyra::opt(tot_sweeps, "tot_sweeps")["-n"]["--nsweeps"]
+		("Number of Monte Carlo sweeps to perform.")
 		| lyra::help(user_help);
 
 	if (!cli.parse({argc, argv})) {
@@ -334,7 +337,7 @@ int mpi_main::run(int argc, char **argv)
 	}
 
 	int n_tiles_x = opts.n_tiles_x;
-	int n_tiles_y = opts.n_tiles_x;
+	int n_tiles_y = opts.n_tiles_y;
 	int n_tiles_z = opts.n_tiles_z;
 
 	
@@ -413,7 +416,7 @@ int mpi_main::run(int argc, char **argv)
 	}
 	
 	
-	spins.set_temp(2.0);
+	spins.set_temp(T);
 	if (my_rank == 0) {
 		std::cerr << "rank layout:\n";
 		for (int iy = 0; iy < n_tiles_y; ++iy) {
@@ -439,10 +442,15 @@ int mpi_main::run(int argc, char **argv)
 	if (my_rank == 0) {
 		std::cerr << "\n\n****  Starting run!  ****\n";
 	}
+	my_timer timer;
+	if (my_rank == 0) {
+		timer.enable_output(std::cerr);
+	}
+	
 	double accepts = 0.0;
 	double total = 0.0;
 	long long steps_taken = 0;
-	long tot_sweeps = 500;
+	
 	long tot_moves = 10*grid.Nx*grid.Ny;
 	long n_steps_to_exchange = grid.Nx*grid.Ny;
 
@@ -470,6 +478,7 @@ int mpi_main::run(int argc, char **argv)
 
 	long total_steps = tot_sweeps * tot_moves;
 	long n_out = 10000000;
+	long f_out = n_out / 50;
 	for (long n_sweeps = 0; n_sweeps < tot_sweeps; ++n_sweeps) {
 		for (long n_moves = 0; n_moves < tot_moves; ++n_moves) {
 			accepts += spins.metropolis_move();
@@ -486,16 +495,16 @@ int mpi_main::run(int argc, char **argv)
 				std::cerr << steps_taken << " / " << total_steps
 				          << " (" << prog*100 << " %)\n";
 			}
+			if (my_rank == 0 && (steps_taken % f_out == 0) ) {
+				std::cout << steps_taken << " " << accepts/total << " "
+				          << total_U*c << " " << spins.average_up_spin()
+				          << " " << spins.average_spin() << "\n";
+			}
+		
 		}
 		total_U = spins.total_spin_energy();
 		
-		if (my_rank == 0) {
-			std::cout << steps_taken << " " << accepts/total << " "
-			          << total_U*c << " " << spins.average_up_spin()
-			          << " " << spins.average_spin() << "\n";
-			
-		}
-
+	        
 
 		if (n_sweeps % sweeps_per_write == 0) {
 			total_grid = all_reduce_grid(spins.grid(), my_rank,
@@ -512,7 +521,7 @@ int mpi_main::run(int argc, char **argv)
 			++png_grids_written;
 		}
 	}
-
+	timer.toc("MPI ising model");
 	
 	
 	return 0;
