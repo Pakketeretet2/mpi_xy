@@ -7,7 +7,7 @@ MPI_DIR = /usr/lib/openmpi/
 MPI_INC = /usr/include/openmpi/
 
 LNK = -L./ -L$(MPI_DIR) -lmpi -lpng
-INC = -I./ -I$(MPI_INC) -I$(XOSHIRO_DIR) -I$(LYRA_DIR)
+INC = -I./ -I$(MPI_INC) -I$(LYRA_DIR)
 
 COMP = $(CC) $(FLAGS) $(INC)
 LINK = $(CC) $(FLAGS) $(INC) $(LNK)
