@@ -25,9 +25,14 @@ struct xy_model_grid
 	xy_model_grid();
 	xy_model_grid(int Nx, int Ny, int Nz);
 	xy_model_grid(const xy_model_grid &o);
+	xy_model_grid(std::istream &in);
+	
 	xy_model_grid &operator=(const xy_model_grid &o);
 	
 	~xy_model_grid();
+
+	void save_grid(std::ostream &out) const;
+	
 	
 	int Nx, Ny, Nz;  // Dimensions
 	

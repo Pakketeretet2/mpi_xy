@@ -305,8 +305,11 @@ int mpi_main::run(int argc, char **argv)
 	
 	long tot_sweeps = 10000;
 	double T = 2.0;
+
+	std::string restart_file = "";
+	std::string restart_file_out = "";
 	// Parse command line args:
-	auto cli = lyra::opt(opts.seed, "seed")["-s"]["--seed"]
+	auto cli = lyra::opt(opts.seed, "seed")["--seed"]
 		("Random seed to use")
 		| lyra::opt(opts.Nx, "Nx")["-Nx"]["--Nx"]
 		("Size of grid in x-direction.")
@@ -324,6 +327,10 @@ int mpi_main::run(int argc, char **argv)
 		("The temperature of the simulation.")
 		| lyra::opt(tot_sweeps, "tot_sweeps")["-n"]["--nsweeps"]
 		("Number of Monte Carlo sweeps to perform.")
+		| lyra::opt(restart_file, "restart_file")["-r"]["--restart"]
+		("Restart run from given restart file.")
+		| lyra::opt(restart_file_out, "restart_file_out")["-s"]["--save"]
+		("Save final state in given restart file.")
 		| lyra::help(user_help);
 
 	if (!cli.parse({argc, argv})) {
@@ -389,20 +396,34 @@ int mpi_main::run(int argc, char **argv)
 	create_grid_layout(rank_layout, my_neighbors, my_rank,
 	                   n_tiles_x, n_tiles_y, n_tiles_z, log);
 	spins.set_my_neighbors(my_neighbors);
-	// spins.rand_init_grid_ising();
-	xy_model_grid grid(opts.Nx, opts.Ny, 1);
-	for (int i = 0; i < opts.Ny; ++i) {
-		for (int j = 0; j < opts.Nx; ++j) {
-			int idx = j + i*opts.Nx;
-			if (j <= i) {
-				grid.s[idx] = 1;
-			} else {
-				grid.s[idx] = -1;
+
+	// ****    Initialize spins:    ****
+	if (!restart_file.empty()) {
+		// Generate unique restart fname for each proc:
+		std::string uniq_res_name = restart_file + "_proc_" +
+			std::to_string(my_rank) + ".bin";
+		std::ifstream restart_in(uniq_res_name, std::ios::binary);
+		assert(restart_in && "Failed to open restart file!");
+		xy_model_grid grid(restart_in);
+		spins.set_grid(grid);
+	} else {
+		xy_model_grid grid(opts.Nx, opts.Ny, 1);
+		for (int i = 0; i < opts.Ny; ++i) {
+			for (int j = 0; j < opts.Nx; ++j) {
+				int idx = j + i*opts.Nx;
+				if (j <= i) {
+					grid.s[idx] = 1;
+				} else {
+					grid.s[idx] = -1;
+				}
 			}
 		}
+		
+		spins.set_grid(grid);
 	}
 
-	spins.set_grid(grid);
+	// ****    Done initializing grid.    ****
+	
 	std::string init_grid_name_png = "init_grid_" + std::to_string(my_rank);
 	init_grid_name_png += ".png";
 	xy_grid_to_png(spins.grid(), init_grid_name_png.c_str());
@@ -450,8 +471,9 @@ int mpi_main::run(int argc, char **argv)
 	double accepts = 0.0;
 	double total = 0.0;
 	long long steps_taken = 0;
-	
-	long tot_moves = 10*grid.Nx*grid.Ny;
+
+	const xy_model_grid &grid = spins.grid();
+	long tot_moves = 10*grid.Nx*10*grid.Ny;
 	long n_steps_to_exchange = grid.Nx*grid.Ny;
 
 	std::vector<std::string> boundary_names = {"TOP", "BOTTOM", "RIGHT", "LEFT"};
@@ -522,6 +544,16 @@ int mpi_main::run(int argc, char **argv)
 		}
 	}
 	timer.toc("MPI ising model");
+
+	// Save the final grid:
+	if (!restart_file_out.empty()) {
+		std::string uniq_res_name = restart_file_out + "_proc_" +
+			std::to_string(my_rank) + ".bin";
+
+		std::ofstream res_out(uniq_res_name, std::ios::binary);
+		spins.grid().save_grid(res_out);
+	}
+	
 	
 	
 	return 0;
